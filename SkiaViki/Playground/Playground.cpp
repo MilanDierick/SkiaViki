@@ -1,5 +1,7 @@
+#include "pch.h"
+#include <iostream>
 
-int main(int argc, char* argv[])
+int main()
 {
-    return 0;
+    std::cout << "Hello World!\n";
 }
