@@ -59,9 +59,12 @@ WASM_GPU="-lEGL -lGLESv2 -DSK_SUPPORT_GPU=1 -DSK_GL -DSK_DISABLE_LEGACY_SHADERCO
 # Compile
 # NOTE: MODULARIZE should be set to 1, the module should be loaded in javascript using a promise
 # See https://emscripten.org/docs/getting_started/FAQ.html
+#
+# SK_BUILD_FOR_WASM is our own symbol, nothing to do with Skia.
 ${EMCXX} \
     -I . \
     -I ~/skia/include/core \
+    -I ~/skia/include/effects \
     -I ~/skia \
     -std=c++17 \
     -s WASM=1 \
@@ -73,6 +76,9 @@ ${EMCXX} \
     -s STRICT=1 \
     -s INITIAL_MEMORY=128MB \
     -s WARN_UNALIGNED=1 \
+    -DSK_BUILD_FOR_WASM \
+    ${WASM_GPU} \
+    ${RELEASE_CONF} \
     ${EXTERNALS_FOLDER}/libskia.a \
     -o $BUILD_DIR/index.html \
     ./main.cpp
