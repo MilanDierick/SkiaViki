@@ -17,25 +17,20 @@ EMAR=`which emar`
 if [[ $@ == *debug* ]]; then
   echo "Building a Debug build"
   EXTRA_CFLAGS="\"-DSK_DEBUG\","
-  RELEASE_CONF="-O0 --js-opts 0 -s DEMANGLE_SUPPORT=1 -s ASSERTIONS=1 -s GL_ASSERTIONS=1 -g4 \
-                --source-map-base /node_modules/debugger/bin/ -DSK_DEBUG"
   BUILD_DIR=${BUILD_DIR:="/work/out/skia-wasm/debug"}
 else
   echo "Building a Release build"
   EXTRA_CFLAGS="\"-DSK_RELEASE\", \"-DGR_GL_CHECK_ALLOC_WITH_GET_ERROR=0\","
-  RELEASE_CONF="-Oz --closure 1 --llvm-lto 3 -DSK_RELEASE -DGR_GL_CHECK_ALLOC_WITH_GET_ERROR=0"
   BUILD_DIR=${BUILD_DIR:="/work/out/skia-wasm/release"}
 fi
 
 mkdir -p $BUILD_DIR
 
 GN_GPU_FLAGS="\"-DSK_DISABLE_LEGACY_SHADERCONTEXT\","
-WASM_GPU="-lEGL -lGLESv2 -DSK_SUPPORT_GPU=1 -DSK_GL \
-          -DSK_DISABLE_LEGACY_SHADERCONTEXT --pre-js $BASE_DIR/cpu.js --pre-js $BASE_DIR/gpu.js"
 
 ./bin/fetch-gn
 
-echo "Compiling bitcode"
+echo "Compiling skia libraries..."
 
 ./bin/gn gen ${BUILD_DIR} \
   --args="cc=\"${EMCC}\" \
@@ -61,9 +56,9 @@ echo "Compiling bitcode"
   skia_use_freetype=true \
   skia_use_libheif=false \
   skia_use_libjpeg_turbo_decode=true \
-  skia_use_libjpeg_turbo_encode=false \
+  skia_use_libjpeg_turbo_encode=true \
   skia_use_libpng_decode=true \
-  skia_use_libpng_encode=false \
+  skia_use_libpng_encode=true \
   skia_use_libwebp_decode=true \
   skia_use_libwebp_encode=false \
   skia_use_wuffs=true \
@@ -86,5 +81,5 @@ echo "Compiling bitcode"
   skia_enable_fontmgr_custom_empty=false \
   skia_enable_pdf=false"
 
-# Build all the libs, we'll link the appropriate ones down below
+# Build all the libs
 ~/depot_tools/ninja -C ${BUILD_DIR} libskia.a
