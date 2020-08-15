@@ -6,94 +6,13 @@
  *
  */
 
-#include "include/gpu/GrBackendSurface.h"
-#include "include/gpu/GrDirectContext.h"
-#include "SDL.h"
-#include "include/core/SkCanvas.h"
-#include "include/core/SkFont.h"
-#include "include/core/SkSurface.h"
-#include "include/utils/SkRandom.h"
+#include "pch.h"
 
-#include "include/gpu/gl/GrGLInterface.h"
-#include "src/gpu/gl/GrGLUtil.h"
-
-#define GL_GLEXT_PROTOTYPES 1
-
-#if defined(SK_BUILD_FOR_WASM)
-#   include <emscripten.h>
-#   include <emscripten.h>
-#   include <GL/gl.h>
-#   include <emscripten/html5.h>
-#   include <SDL_opengles2.h>
-#elif defined(SK_BUILD_FOR_ANDROID)
-#   include <GLES/gl.h>
-#elif defined(SK_BUILD_FOR_UNIX)
-#   include <GL/gl.h>
-#elif defined(SK_BUILD_FOR_MAC)
-#   include <OpenGL/gl.h>
-#elif defined(SK_BUILD_FOR_IOS)
-#   include <OpenGLES/ES2/gl.h>
-#endif
-
-sk_sp<SkSurface> MakeOnScreenGLSurface(sk_sp<GrContext> grContext, int width, int height) {
-    glClearColor(0, 0, 0, 0);
-    glClearStencil(0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-
-    // Wrap the frame buffer object attached to the screen in a Skia render
-    // target so Skia can render to it
-    GrGLint buffer;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &buffer);
-    GrGLFramebufferInfo info;
-    info.fFBOID = (GrGLuint) buffer;
-    SkColorType colorType;
-
-    info.fFormat = GL_RGBA8;
-    colorType = kRGBA_8888_SkColorType;
-
-    GrBackendRenderTarget target(width, height, 0, 8, info);
-
-    sk_sp<SkSurface> surface(SkSurface::MakeFromBackendRenderTarget(grContext.get(), target,
-                                                                    kBottomLeft_GrSurfaceOrigin,
-                                                                    colorType, nullptr, nullptr));
-    return surface;
-}
-
-sk_sp<SkSurface> MakeRenderTarget(sk_sp<GrContext> grContext, int width, int height) {
-    SkImageInfo info = SkImageInfo::MakeN32(width, height, SkAlphaType::kPremul_SkAlphaType);
-
-    sk_sp<SkSurface> surface(SkSurface::MakeRenderTarget(grContext.get(),
-                             SkBudgeted::kYes,
-                             info, 0,
-                             kBottomLeft_GrSurfaceOrigin,
-                             nullptr, true));
-    return surface;
-}
-
-sk_sp<SkSurface> MakeRenderTarget(sk_sp<GrContext> grContext, const SkImageInfo& sii) {
-    sk_sp<SkSurface> surface(SkSurface::MakeRenderTarget(grContext.get(),
-                             SkBudgeted::kYes,
-                             sii, 0,
-                             kBottomLeft_GrSurfaceOrigin,
-                             nullptr, true));
-    return surface;
-}
-
-sk_sp<GrContext> MakeGrContext(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context)
+extern "C"
 {
-    EMSCRIPTEN_RESULT r = emscripten_webgl_make_context_current(context);
-    if (r < 0) {
-        SkDebugf("failed to make webgl context current %d\n", r);
-        return nullptr;
-    }
-    // setup GrContext
-    auto interface = GrGLMakeNativeInterface();
-    // setup contexts
-    sk_sp<GrContext> grContext(GrContext::MakeGL(interface));
-    return grContext;
+	bool gCheckErrorGL = false;
+	bool gLogCallsGL = false;
 }
-
 
 /*
  * This application is a simple example of how to combine SDL and Skia it demonstrates:
@@ -109,11 +28,154 @@ static const int kMsaaSampleCount = 0; //4;
 // // Skia needs 8 stencil bits
 static const int kStencilBits = 8;  
 
+// Creates a star type shape using a SkPath
+static SkPath create_star() {
+	static const int kNumPoints = 5;
+	SkPath concavePath;
+	SkPoint points[kNumPoints] = { {0, SkIntToScalar(-50)} };
+	SkMatrix rot;
+	rot.setRotate(SkIntToScalar(360) / kNumPoints);
+	for (int i = 1; i < kNumPoints; ++i) {
+		rot.mapPoints(points + i, points + i - 1, 1);
+	}
+	concavePath.moveTo(points[0]);
+	for (int i = 0; i < kNumPoints; ++i) {
+		concavePath.lineTo(points[(2 * i) % kNumPoints]);
+	}
+	concavePath.setFillType(SkPathFillType::kEvenOdd);
+	SkASSERT(!concavePath.isConvex());
+	concavePath.close();
+	return concavePath;
+}
+
+
 struct ApplicationState {
 	ApplicationState() : fQuit(false) {}
+
+  void skia_sdl_init()
+  {
+    int viewWidth, viewHeight;
+    SDL_GL_GetDrawableSize(window, &viewWidth, &viewHeight);
+
+    glViewport(0, 0, viewWidth, viewHeight);
+    glClearColor(1, 1, 1, 1);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+    puts("setup GrContext");
+
+    // setup GrContext
+    auto interface = GrGLMakeNativeInterface();
+
+    // setup contexts
+  #ifdef __EMSCRIPTEN__
+    grContext = GrContext::MakeGL(interface);
+  #else
+    grContext = GrDirectContext::MakeGL(interface);
+  #endif
+    SkASSERT(grContext);
+
+    // Wrap the frame buffer object attached to the screen in a Skia render target so Skia can
+    // render to it
+    GrGLint buffer;
+    GR_GL_GetIntegerv(interface.get(), GR_GL_FRAMEBUFFER_BINDING, &buffer);
+    GrGLFramebufferInfo info;
+    info.fFBOID = (GrGLuint)buffer;
+
+    int contextType;
+    SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &contextType);
+
+    SkColorType colorType;
+
+  #ifdef __EMSCRIPTEN__
+    info.fFormat = GL_RGBA8;
+    colorType = kRGBA_8888_SkColorType;
+  #else
+    //SkDebugf("%s", SDL_GetPixelFormatName(windowFormat));
+    // TODO: the windowFormat is never any of these?
+    uint32_t windowFormat = SDL_GetWindowPixelFormat(window);
+    if (SDL_PIXELFORMAT_RGBA8888 == windowFormat) {
+      info.fFormat = GR_GL_RGBA8;
+      colorType = kRGBA_8888_SkColorType;
+    }
+    else {
+      colorType = kBGRA_8888_SkColorType;
+      if (SDL_GL_CONTEXT_PROFILE_ES == contextType) {
+        info.fFormat = GR_GL_BGRA8;
+      }
+      else {
+        // We assume the internal format is RGBA8 on desktop GL
+        info.fFormat = GR_GL_RGBA8;
+      }
+    }
+  #endif
+
+    printf("Using color type %d\n", colorType);
+
+    target = new GrBackendRenderTarget(viewWidth, viewHeight, kMsaaSampleCount, kStencilBits, info);
+    printf("Created render target %dx%d -> %d\n", viewWidth, viewHeight, target.isValid());
+
+  #ifdef __EMSCRIPTEN__
+    surface = SkSurface::MakeFromBackendRenderTarget(
+      grContext.get(), target,
+      kBottomLeft_GrSurfaceOrigin,
+      colorType, nullptr, nullptr);
+  #else
+    // setup SkSurface
+    // To use distance field text, use commented out SkSurfaceProps instead
+    // SkSurfaceProps props(SkSurfaceProps::kUseDeviceIndependentFonts_Flag,
+    // 	SkSurfaceProps::kLegacyFontHost_InitType);
+    SkSurfaceProps props(SkSurfaceProps::kLegacyFontHost_InitType);
+
+   surface = SkSurface::MakeFromBackendRenderTarget(grContext.get(), target,
+      kBottomLeft_GrSurfaceOrigin,
+      colorType, nullptr, &props);
+  #endif
+    printf("Created render surface -> %p\n", surface.get());
+
+    canvas = surface->getCanvas();
+    // canvas->scale((float)dw / displayMode.w, (float)dh / displayMode.h);
+
+    const char* helpMessage = "Click and drag to create rects.  Press esc to quit.";
+
+    paint.setAntiAlias(true);
+
+    // create a surface for CPU rasterization
+    sk_sp<SkSurface> cpuSurface(SkSurface::MakeRaster(canvas->imageInfo()));
+
+    printf("Created offscreen CPU surface -> %p", cpuSurface.get());
+
+    SkCanvas* offscreen = cpuSurface->getCanvas();
+    offscreen->save();
+    offscreen->translate(50.0f, 50.0f);
+    offscreen->drawPath(create_star(), paint);
+    offscreen->restore();
+
+    image = cpuSurface->makeImageSnapshot();
+
+    font.setSize(24);
+  }
+
+
 	// Storage for the user created rectangles. The last one may still be being edited.
 	SkTArray<SkRect> fRects;
 	bool fQuit;
+
+#ifdef __EMSCRIPTEN__
+  sk_sp<GrContext> grContext;
+#else
+  sk_sp<GrDirectContext> grContext;
+#endif
+
+  SkPaint paint;
+  SkScalar rotation = 0;
+  SkFont font;
+
+  sk_sp<SkCanvas> canvas;
+  sk_sp<GrBackendRenderTarget> target;
+  sk_sp<SkSurface> surface;
+  sk_sp<SkImage> image;
+  SDL_Window* window;
 };
 
 static void handle_error() {
@@ -157,131 +219,31 @@ static void handle_events(ApplicationState* state, SkCanvas* canvas) {
 	}
 }
 
-// Creates a star type shape using a SkPath
-static SkPath create_star() {
-	static const int kNumPoints = 5;
-	SkPath concavePath;
-	SkPoint points[kNumPoints] = { {0, SkIntToScalar(-50)} };
-	SkMatrix rot;
-	rot.setRotate(SkIntToScalar(360) / kNumPoints);
-	for (int i = 1; i < kNumPoints; ++i) {
-		rot.mapPoints(points + i, points + i - 1, 1);
-	}
-	concavePath.moveTo(points[0]);
-	for (int i = 0; i < kNumPoints; ++i) {
-		concavePath.lineTo(points[(2 * i) % kNumPoints]);
-	}
-	concavePath.setFillType(SkPathFillType::kEvenOdd);
-	SkASSERT(!concavePath.isConvex());
-	concavePath.close();
-	return concavePath;
-}
+void skia_sdl_loop() {
 
-void skia_sdl_loop(SDL_Window* window)
-{
-	int viewWidth, viewHeight;
-	SDL_GL_GetDrawableSize(window, &viewWidth, &viewHeight);
+  puts("Looping...");
 
-	glViewport(0, 0, viewWidth, viewHeight);
-	glClearColor(1, 1, 1, 1);
-	glClearStencil(0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+  SkRandom rand;
+  canvas->clear(SK_ColorWHITE);
+  handle_events(&state, canvas);
 
-	// setup GrContext
-	auto interface = GrGLMakeNativeInterface();
+  paint.setColor(SK_ColorBLACK);
+  canvas->drawString(helpMessage, 100.0f, 100.0f, font, paint);
+  for (int i = 0; i < state.fRects.count(); i++) {
+    paint.setColor(rand.nextU() | 0x44808080);
+    canvas->drawRect(state.fRects[i], paint);
+  }
 
-	// setup contexts
-	sk_sp<GrDirectContext> grContext(GrDirectContext::MakeGL(interface));
-	SkASSERT(grContext);
+  // draw offscreen canvas
+  canvas->save();
+  canvas->translate(float(viewWidth) / 2, float(viewHeight) / 2);
+  canvas->rotate(rotation++);
+  canvas->drawImage(image, -50.0f, -50.0f);
+  canvas->restore();
 
-	// Wrap the frame buffer object attached to the screen in a Skia render target so Skia can
-	// render to it
-	GrGLint buffer;
-	GR_GL_GetIntegerv(interface.get(), GR_GL_FRAMEBUFFER_BINDING, &buffer);
-	GrGLFramebufferInfo info;
-	info.fFBOID = (GrGLuint)buffer;
-	SkColorType colorType;
+  canvas->flush();
 
-	int contextType;
-	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &contextType);
-
-	//SkDebugf("%s", SDL_GetPixelFormatName(windowFormat));
-	// TODO: the windowFormat is never any of these?
-	uint32_t windowFormat = SDL_GetWindowPixelFormat(window);
-	if (SDL_PIXELFORMAT_RGBA8888 == windowFormat) {
-		info.fFormat = GR_GL_RGBA8;
-		colorType = kRGBA_8888_SkColorType;
-	}
-	else {
-		colorType = kBGRA_8888_SkColorType;
-		if (SDL_GL_CONTEXT_PROFILE_ES == contextType) {
-			info.fFormat = GR_GL_BGRA8;
-		}
-		else {
-			// We assume the internal format is RGBA8 on desktop GL
-			info.fFormat = GR_GL_RGBA8;
-		}
-	}
-
-	GrBackendRenderTarget target(viewWidth, viewHeight, kMsaaSampleCount, kStencilBits, info);
-
-	// setup SkSurface
-	// To use distance field text, use commented out SkSurfaceProps instead
-	// SkSurfaceProps props(SkSurfaceProps::kUseDeviceIndependentFonts_Flag,
-	// 	SkSurfaceProps::kLegacyFontHost_InitType);
-	SkSurfaceProps props(SkSurfaceProps::kLegacyFontHost_InitType);
-
-	sk_sp<SkSurface> surface(SkSurface::MakeFromBackendRenderTarget(grContext.get(), target,
-		kBottomLeft_GrSurfaceOrigin,
-		colorType, nullptr, &props));
-
-	SkCanvas* canvas = surface->getCanvas();
-	// canvas->scale((float)dw / displayMode.w, (float)dh / displayMode.h);
-
-	ApplicationState state;
-
-	const char* helpMessage = "Click and drag to create rects.  Press esc to quit.";
-
-	SkPaint paint;
-	paint.setAntiAlias(true);
-
-	// create a surface for CPU rasterization
-	sk_sp<SkSurface> cpuSurface(SkSurface::MakeRaster(canvas->imageInfo()));
-
-	SkCanvas* offscreen = cpuSurface->getCanvas();
-	offscreen->save();
-	offscreen->translate(50.0f, 50.0f);
-	offscreen->drawPath(create_star(), paint);
-	offscreen->restore();
-
-	sk_sp<SkImage> image = cpuSurface->makeImageSnapshot();
-
-	SkScalar rotation = 0;
-	SkFont font;
-	font.setSize(24);
-	
-	while (!state.fQuit) { // Our application loop
-		SkRandom rand;
-		canvas->clear(SK_ColorWHITE);
-		handle_events(&state, canvas);
-
-		paint.setColor(SK_ColorBLACK);
-		canvas->drawString(helpMessage, 100.0f, 100.0f, font, paint);
-		for (int i = 0; i < state.fRects.count(); i++) {
-			paint.setColor(rand.nextU() | 0x44808080);
-			canvas->drawRect(state.fRects[i], paint);
-		}
-
-		// draw offscreen canvas
-		canvas->save();
-		canvas->translate(float(viewWidth) / 2, float(viewHeight) / 2);
-		canvas->rotate(rotation++);
-		canvas->drawImage(image, -50.0f, -50.0f);
-		canvas->restore();
-
-		canvas->flush();
-		SDL_GL_SwapWindow(window);
-	}
+  SDL_GL_SwapWindow(window);
 }
 
 #if defined(SK_BUILD_FOR_ANDROID)
@@ -335,8 +297,8 @@ extern "C" int __cdecl main(int argc, char** argv) {
 		return 1;
 	}
 
-	SDL_Window* window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED, displayMode.w/2, displayMode.h/2, windowFlags);
+	window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_CENTERED,
+	SDL_WINDOWPOS_CENTERED, displayMode.w/2, displayMode.h/2, windowFlags);
 
 	if (!window) {
 		handle_error();
@@ -359,7 +321,18 @@ extern "C" int __cdecl main(int argc, char** argv) {
 		return success;
 	}
 
-	skia_sdl_loop(window);
+  skia_sdl_init();
+
+  puts("Starting...");
+#ifdef __EMSCRIPTEN__
+  emscripten_set_main_loop(skia_sdl_loop, 0, true);
+#else
+	while (!state.fQuit) { // Our application loop
+  	skia_sdl_loop();
+  }
+#endif
+
+  puts("Exiting...");
 
 	if (glContext) {
 		SDL_GL_DeleteContext(glContext);

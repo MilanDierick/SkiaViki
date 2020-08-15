@@ -24,7 +24,11 @@ if [[ $@ == *debug* ]]; then
   BUILD_DIR=${BUILD_DIR:="out/debug"}
 else
   echo "Building a Release build"
-  RELEASE_CONF="-Oz --closure 1 -DSK_RELEASE -DGR_GL_CHECK_ALLOC_WITH_GET_ERROR=0"
+  #RELEASE_CONF="-Oz --closure 1 -DSK_RELEASE -DGR_GL_CHECK_ALLOC_WITH_GET_ERROR=0"
+
+  # HACK: Faster builds with -O0
+  # TODO: Make debug build of Skia for development!
+  RELEASE_CONF="-O0 --closure 1 -DSK_RELEASE -DGR_GL_CHECK_ALLOC_WITH_GET_ERROR=0"
   EXTERNALS_FOLDER=/externals/release
   BUILD_DIR=${BUILD_DIR:="out/release"}
 fi
@@ -60,6 +64,8 @@ WASM_GPU="-lEGL -lGLESv2 -DSK_SUPPORT_GPU=1 -DSK_GL -DSK_DISABLE_LEGACY_SHADERCO
 # NOTE: MODULARIZE should be set to 1, the module should be loaded in javascript using a promise
 # See https://emscripten.org/docs/getting_started/FAQ.html
 #
+# NOTE: Had to remove -s STRICT=1, got linker errors (emscripten_sleep not defined)
+#
 # SK_BUILD_FOR_WASM is our own symbol, nothing to do with Skia.
 ${EMCXX} \
     -I . \
@@ -73,16 +79,15 @@ ${EMCXX} \
     -s FORCE_FILESYSTEM=0 \
     -s MODULARIZE=0 \
     -s NO_EXIT_RUNTIME=1 \
-    -s STRICT=1 \
     -s INITIAL_MEMORY=128MB \
     -s WARN_UNALIGNED=1 \
     -DSK_BUILD_FOR_WASM \
     ${WASM_GPU} \
     ${RELEASE_CONF} \
     ${EXTERNALS_FOLDER}/libskia.a \
-    -o $BUILD_DIR/index.js \
+    -o $BUILD_DIR/index.html \
     ./main.cpp
 
 # Test
-node $BUILD_DIR/index.js
+# node $BUILD_DIR/index.js
 
