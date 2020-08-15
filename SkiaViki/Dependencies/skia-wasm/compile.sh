@@ -3,38 +3,16 @@
 # exit asap
 set -ex
 
-# we need exactly this version to build libskia.wasm :(
-EMSCRIPTEN_VERSION=1.39.18
-
-echo Updating emsdk...
-cd /src/emsdk
-git reset --hard
-git pull
-
-echo Activating emsdk...
-./emsdk install ${EMSCRIPTEN_VERSION}
-./emsdk activate ${EMSCRIPTEN_VERSION}
-source ./emsdk_env.sh
-
-echo Updating depot_tools...
-cd /src/depot_tools
-git reset --hard
-git pull
-
-echo Activating depot_tools...
-export PATH="/src/depot_tools:${PATH}"
-
 echo Updating skia...
 
-BASE_DIR="/src/skia"
+BASE_DIR=~/skia
 
-cd $BASE_DIR
+cd ${BASE_DIR}
 python2 tools/git-sync-deps
 
 EMCC=`which emcc`
 EMCXX=`which em++`
 EMAR=`which emar`
-NINJA=`which ninja`
 
 if [[ $@ == *debug* ]]; then
   echo "Building a Debug build"
@@ -109,4 +87,4 @@ echo "Compiling bitcode"
   skia_enable_pdf=false"
 
 # Build all the libs, we'll link the appropriate ones down below
-${NINJA} -C ${BUILD_DIR} libskia.a
+~/depot_tools/ninja -C ${BUILD_DIR} libskia.a
