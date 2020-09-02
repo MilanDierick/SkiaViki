@@ -1,3 +1,6 @@
 [submodule "SkiaViki/Dependencies/skia"]
 	path = SkiaViki/Dependencies/skia
 	url = https://github.com/google/skia.git
+[submodule "SkiaViki/Dependencies/glfw"]
+	path = SkiaViki/Dependencies/glfw
+	url = https://github.com/MilanDierick/glfw

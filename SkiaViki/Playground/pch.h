@@ -9,21 +9,7 @@
 
 // add headers that you want to pre-compile here
 
-#pragma warning(push)
-#pragma warning(disable: 4244)
-#pragma warning(disable: 4267)
-
-#include "include/gpu/GrBackendSurface.h"
-#include "include/gpu/GrDirectContext.h"
-#include "SDL.h"
-#include "include/core/SkCanvas.h"
-#include "include/core/SkFont.h"
-#include "include/core/SkSurface.h"
-#include "include/utils/SkRandom.h"
-
-#include "include/gpu/gl/GrGLInterface.h"
-#include "SDL_opengles2.h"
-#include "src/gpu/gl/GrGLUtil.h"
+#pragma comment(lib, "libskia.a")
 
 #if defined(SK_BUILD_FOR_ANDROID)
 #include <GLES/gl.h>
@@ -35,8 +21,6 @@
 #include <OpenGLES/ES2/gl.h>
 #endif
 
-#undef main
-
-#pragma warning(pop)
+//#undef main
 
 #endif //PCH_H

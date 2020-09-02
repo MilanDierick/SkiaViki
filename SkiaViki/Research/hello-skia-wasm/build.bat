@@ -16,3 +16,5 @@ goto :exit
 echo :-( failure!
 
 :exit
+
+PAUSE
