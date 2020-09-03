@@ -74,9 +74,14 @@ ${EMCXX} \
     -s INITIAL_MEMORY=128MB \
     -s WARN_UNALIGNED=1 \
     ${EXTERNALS_FOLDER}/libskia.a \
-    -o $BUILD_DIR/index.js \
+    -o $BUILD_DIR/index.html \
     ./main.cpp
 
 # Test
 node $BUILD_DIR/index.js
+
+# Serve
+echo Open http://localhost:8000
+pushd ./out/release; python ../../serve.py; popd
+
 
