@@ -3,6 +3,11 @@
 #include <emscripten.h>
 #include <SDL.h>
 
+#include "include/core/SkData.h"
+#include "include/core/SkImage.h"
+#include "include/core/SkStream.h"
+#include "include/core/SkSurface.h"
+
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL_opengles2.h>
 #include <iostream>
@@ -36,10 +41,6 @@ void main_loop() { loop(); }
 
 int main()
 {
-    SkPoint point{2, 0};
-
-    std::cout << point.length() << std::endl;
-
     SDL_Window *window;
     SDL_CreateWindowAndRenderer(640, 480, 0, &window, nullptr);
 
@@ -78,6 +79,10 @@ int main()
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
     glEnableVertexAttribArray(posAttrib);
     glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+    sk_sp<SkSurface> rasterSurface = SkSurface::MakeRasterN32Premul(256, 256);
+    SkCanvas* rasterCanvas = rasterSurface->getCanvas();
+    
 
     loop = [&]
     {

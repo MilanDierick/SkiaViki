@@ -29,8 +29,6 @@ else()
     endif()
 endif()
 
-message(${CMAKE_SOURCE_DIR}/../../Dependencies/skia/)
-
 # Define executable target
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2main_INCLUDE_DIRS} ${OPENGL_INCLUDE_DIR} ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/../../Dependencies/skia/)
 add_executable(CMakeDemo Main.cpp gl2/Context.cpp)
