@@ -13,16 +13,18 @@
 #pragma warning(disable: 4244)
 #pragma warning(disable: 4267)
 
+#define SK_GL
+
+#include "SDL.h"
+#include "SDL_opengles2.h"
+
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrDirectContext.h"
-#include "SDL.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkSurface.h"
 #include "include/utils/SkRandom.h"
-
 #include "include/gpu/gl/GrGLInterface.h"
-#include "SDL_opengles2.h"
 #include "src/gpu/gl/GrGLUtil.h"
 
 #if defined(SK_BUILD_FOR_ANDROID)
