@@ -22,17 +22,41 @@ extern "C"
  *   draw more complex primitives (star)
  */
 
-// If you want multisampling, uncomment the below lines and set a sample count
+ // If you want multisampling, uncomment the below lines and set a sample count
 static const int kMsaaSampleCount = 0; //4;
 
 // // Skia needs 8 stencil bits
-static const int kStencilBits = 8;  
+static const int kStencilBits = 8;
 
-struct ApplicationState {
-	ApplicationState() : fQuit(false) {}
+class App {
+public:
+	App(SDL_Window* window): window(window)
+	{
+	}
+
+	void run();
+
+private:
+	void handle_events();
+	void skia_sdl_init();
+	void skia_sdl_loop();
+
 	// Storage for the user created rectangles. The last one may still be being edited.
-	SkTArray<SkRect> fRects;
-	bool fQuit;
+	SkTArray<SkRect> fRects = {};
+	SDL_Window* window = nullptr;
+
+	sk_sp<GrDirectContext> grContext;
+	sk_sp<SkSurface> surface;
+	sk_sp<SkSurface> cpuSurface;
+
+	sk_sp<SkImage> image;
+	SkPaint paint;
+	SkFont font;
+	float rotation = 0;
+	int viewWidth = 0;
+	int viewHeight = 0;
+
+	bool fQuit = false;
 };
 
 static void handle_error() {
@@ -41,20 +65,26 @@ static void handle_error() {
 	SDL_ClearError();
 }
 
-static void handle_events(ApplicationState* state, SkCanvas* canvas) {
+void App::run()
+{
+	skia_sdl_init();
+	skia_sdl_loop();
+}
+
+void App::handle_events() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 		case SDL_MOUSEMOTION:
 			if (event.motion.state == SDL_PRESSED) {
-				SkRect& rect = state->fRects.back();
+				SkRect& rect = fRects.back();
 				rect.fRight = static_cast<SkScalar>(event.motion.x);
 				rect.fBottom = static_cast<SkScalar>(event.motion.y);
 			}
 			break;
 		case SDL_MOUSEBUTTONDOWN:
 			if (event.button.state == SDL_PRESSED) {
-				state->fRects.push_back() = SkRect::MakeLTRB(SkIntToScalar(event.button.x),
+				fRects.push_back() = SkRect::MakeLTRB(SkIntToScalar(event.button.x),
 					SkIntToScalar(event.button.y),
 					SkIntToScalar(event.button.x),
 					SkIntToScalar(event.button.y));
@@ -63,12 +93,12 @@ static void handle_events(ApplicationState* state, SkCanvas* canvas) {
 		case SDL_KEYDOWN: {
 			SDL_Keycode key = event.key.keysym.sym;
 			if (key == SDLK_ESCAPE) {
-				state->fQuit = true;
+				fQuit = true;
 			}
 			break;
 		}
 		case SDL_QUIT:
-			state->fQuit = true;
+			fQuit = true;
 			break;
 		default:
 			break;
@@ -96,9 +126,8 @@ static SkPath create_star() {
 	return concavePath;
 }
 
-void skia_sdl_loop(SDL_Window* window)
+void App::skia_sdl_init()
 {
-	int viewWidth, viewHeight;
 	SDL_GL_GetDrawableSize(window, &viewWidth, &viewHeight);
 
 	glViewport(0, 0, viewWidth, viewHeight);
@@ -107,10 +136,10 @@ void skia_sdl_loop(SDL_Window* window)
 	glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 	// setup GrContext
-	auto interface = GrGLMakeNativeInterface();
+	const auto interface = GrGLMakeNativeInterface();
 
 	// setup contexts
-	sk_sp<GrDirectContext> grContext(GrDirectContext::MakeGL(interface));
+	grContext = GrDirectContext::MakeGL(interface);
 	SkASSERT(grContext);
 
 	// Wrap the frame buffer object attached to the screen in a Skia render target so Skia can
@@ -150,45 +179,46 @@ void skia_sdl_loop(SDL_Window* window)
 	// 	SkSurfaceProps::kLegacyFontHost_InitType);
 	SkSurfaceProps props(SkSurfaceProps::kLegacyFontHost_InitType);
 
-	sk_sp<SkSurface> surface(SkSurface::MakeFromBackendRenderTarget(grContext.get(), target,
+	surface = SkSurface::MakeFromBackendRenderTarget(grContext.get(), target,
 		kBottomLeft_GrSurfaceOrigin,
-		colorType, nullptr, &props));
+		colorType, nullptr, &props);
 
-	SkCanvas* canvas = surface->getCanvas();
+	auto* canvas = surface->getCanvas();
 	// canvas->scale((float)dw / displayMode.w, (float)dh / displayMode.h);
 
-	ApplicationState state;
-
-	const char* helpMessage = "Click and drag to create rects.  Press esc to quit.";
-
-	SkPaint paint;
 	paint.setAntiAlias(true);
 
 	// create a surface for CPU rasterization
-	sk_sp<SkSurface> cpuSurface(SkSurface::MakeRaster(canvas->imageInfo()));
+	cpuSurface = SkSurface::MakeRaster(canvas->imageInfo());
 
-	SkCanvas* offscreen = cpuSurface->getCanvas();
+	auto* offscreen = cpuSurface->getCanvas();
 	offscreen->save();
 	offscreen->translate(50.0f, 50.0f);
 	offscreen->drawPath(create_star(), paint);
 	offscreen->restore();
 
-	sk_sp<SkImage> image = cpuSurface->makeImageSnapshot();
+	image = cpuSurface->makeImageSnapshot();
 
-	SkScalar rotation = 0;
-	SkFont font;
 	font.setSize(24);
-	
-	while (!state.fQuit) { // Our application loop
-		SkRandom rand;
+}
+
+void App::skia_sdl_loop()
+{
+	auto* canvas = surface->getCanvas();
+	const char* helpMessage = "Click and drag to create rects.  Press esc to quit.";
+
+	while (!fQuit) { // Our application loop
 		canvas->clear(SK_ColorWHITE);
-		handle_events(&state, canvas);
+		handle_events();
 
 		paint.setColor(SK_ColorBLACK);
+
 		canvas->drawString(helpMessage, 100.0f, 100.0f, font, paint);
-		for (int i = 0; i < state.fRects.count(); i++) {
+
+		SkRandom rand;
+		for (int i = 0; i < fRects.count(); i++) {
 			paint.setColor(rand.nextU() | 0x44808080);
-			canvas->drawRect(state.fRects[i], paint);
+			canvas->drawRect(fRects[i], paint);
 		}
 
 		// draw offscreen canvas
@@ -208,12 +238,12 @@ int SDL_main(int argc, char** argv) {
 #else
 extern "C" int __cdecl main(int argc, char** argv) {
 #endif
+
 	uint32_t windowFlags = 0;
 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 
-	SDL_GLContext glContext = nullptr;
 #if defined(SK_BUILD_FOR_ANDROID) || defined(SK_BUILD_FOR_IOS)
 	// For Android/iOS we need to set up for OpenGL ES and we make the window hi res & full screen
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -254,8 +284,8 @@ extern "C" int __cdecl main(int argc, char** argv) {
 		return 1;
 	}
 
-	SDL_Window* window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED, displayMode.w/2, displayMode.h/2, windowFlags);
+	auto* window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_CENTERED,
+		SDL_WINDOWPOS_CENTERED, displayMode.w / 2, displayMode.h / 2, windowFlags);
 
 	if (!window) {
 		handle_error();
@@ -266,7 +296,7 @@ extern "C" int __cdecl main(int argc, char** argv) {
 	// SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
 
 	// try and setup a GL context
-	glContext = SDL_GL_CreateContext(window);
+	auto* glContext = SDL_GL_CreateContext(window);
 	if (!glContext) {
 		handle_error();
 		return 1;
@@ -278,7 +308,9 @@ extern "C" int __cdecl main(int argc, char** argv) {
 		return success;
 	}
 
-	skia_sdl_loop(window);
+	App* app = new App(window);
+	app->run();
+	delete app;
 
 	if (glContext) {
 		SDL_GL_DeleteContext(glContext);
