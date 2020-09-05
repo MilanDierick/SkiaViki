@@ -4,3 +4,6 @@
 [submodule "SkiaViki/Dependencies/glfw"]
 	path = SkiaViki/Dependencies/glfw
 	url = https://github.com/MilanDierick/glfw
+[submodule "SkiaViki/Dependencies/depot_tools"]
+	path = SkiaViki/Dependencies/depot_tools
+	url = https://chromium.googlesource.com/chromium/tools/depot_tools.git
