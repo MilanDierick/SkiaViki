@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16.3)
 project(CMakeDemo)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
@@ -14,7 +14,7 @@ set(DEMO_ENABLE_MULTISAMPLE 0 CACHE BOOL "Enable multisample anti-aliasing")
 configure_file(demo-config.h.in "${CMAKE_BINARY_DIR}/demo-config.h")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
-    set(USE_FLAGS "-s USE_SDL=2 -s USE_WEBGL2=1 -std=c++11 -s WASM=1 -O3")
+    set(USE_FLAGS "-s USE_SDL=2 -s USE_WEBGL2=1 -std=c++11 -s WASM=1 -s DISABLE_EXCEPTION_CATCHING=0 -s LLD_REPORT_UNDEFINED -O3")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${USE_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${USE_FLAGS}")
@@ -30,8 +30,8 @@ else()
 endif()
 
 # Define executable target
-include_directories(${SDL2_INCLUDE_DIRS} ${SDL2main_INCLUDE_DIRS} ${OPENGL_INCLUDE_DIR} ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/../../Dependencies/skia/)
-add_executable(CMakeDemo Main.cpp gl2/Context.cpp)
+include_directories(${SDL2_INCLUDE_DIRS} ${SDL2main_INCLUDE_DIRS} ${OPENGL_INCLUDE_DIR} ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/../../Dependencies/skia/ ${CMAKE_SOURCE_DIR}/include/)
+add_executable(CMakeDemo src/Main.cpp gl2/Context.cpp src/App.cpp include/App.h include/pch.h src/pch.cpp src/Utilities.cpp include/Utilities.h)
 target_link_libraries(CMakeDemo ${SDL2_LIBS} ${OPENGL_LIBRARIES} ${CMAKE_SOURCE_DIR}/extern/libskia.a)
 
 # Copy SDL2 DLLs to output folder on Windows
