@@ -18,10 +18,14 @@ if [[ $@ == *debug* ]]; then
   echo "Building a Debug build"
   EXTRA_CFLAGS="\"-DSK_DEBUG\","
   BUILD_DIR=${BUILD_DIR:="/work/out/skia-wasm/debug"}
+  IS_SKIA_DEBUG="is_debug=true"
+  IS_SKIA_OFFICIAL="is_official_build=false"
 else
   echo "Building a Release build"
   EXTRA_CFLAGS="\"-DSK_RELEASE\", \"-DGR_GL_CHECK_ALLOC_WITH_GET_ERROR=0\","
   BUILD_DIR=${BUILD_DIR:="/work/out/skia-wasm/release"}
+  IS_SKIA_DEBUG="is_debug=false"
+  IS_SKIA_OFFICIAL="is_official_build=true"
 fi
 
 mkdir -p $BUILD_DIR
@@ -42,8 +46,8 @@ echo "Compiling skia libraries..."
     ${GN_GPU_FLAGS}
     ${EXTRA_CFLAGS}
   ] \
-  is_debug=false \
-  is_official_build=true \
+  ${IS_SKIA_DEBUG} 
+  ${IS_SKIA_OFFICIAL}
   is_component_build=false \
   werror=true \
   target_cpu=\"wasm\" \
