@@ -8,8 +8,13 @@
 
 #include "pch.h"
 
+#define S1(x) #x
+#define S2(x) S1(x)
+#define PRINT_LINE puts(__FILE__ " : " S2(__LINE__))
+
 extern "C"
 {
+	// TODO: No idea why we have to define these...
 	bool gCheckErrorGL = false;
 	bool gLogCallsGL = false;
 }
@@ -28,22 +33,35 @@ static const int kMsaaSampleCount = 0; //4;
 // // Skia needs 8 stencil bits
 static const int kStencilBits = 8;
 
-class App {
+class SdlApp
+{
 public:
-	App(SDL_Window* window): window(window)
-	{
-	}
+	SdlApp();
+
+	virtual ~SdlApp();
+
+protected:
+	void* glContext = nullptr;
+	SDL_Window* window = nullptr;
+	int viewWidth = 0;
+	int viewHeight = 0;
+};
+
+class SkiaApp : public SdlApp {
+public:
+	SkiaApp();
+	virtual ~SkiaApp();
 
 	void run();
+	void update();
+
+	static void update_callback(void* app);
 
 private:
 	void handle_events();
-	void skia_sdl_init();
-	void skia_sdl_loop();
 
 	// Storage for the user created rectangles. The last one may still be being edited.
 	SkTArray<SkRect> fRects = {};
-	SDL_Window* window = nullptr;
 
 	sk_sp<GrDirectContext> grContext;
 	sk_sp<SkSurface> surface;
@@ -53,25 +71,136 @@ private:
 	SkPaint paint;
 	SkFont font;
 	float rotation = 0;
-	int viewWidth = 0;
-	int viewHeight = 0;
 
 	bool fQuit = false;
 };
 
-static void handle_error() {
+static void throw_sdl_error() {
 	const char* error = SDL_GetError();
-	SkDebugf("SDL Error: %s\n", error);
+	throw std::runtime_error(std::string("SDL Error: ") + std::string(error));
 	SDL_ClearError();
 }
 
-void App::run()
+SdlApp::SdlApp()
 {
-	skia_sdl_init();
-	skia_sdl_loop();
+	uint32_t windowFlags = 0;
+
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+
+#if defined(SK_BUILD_FOR_ANDROID) || defined(SK_BUILD_FOR_IOS)
+	// For Android/iOS we need to set up for OpenGL ES and we make the window hi res & full screen
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
+		SDL_WINDOW_BORDERLESS | SDL_WINDOW_FULLSCREEN_DESKTOP |
+		SDL_WINDOW_ALLOW_HIGHDPI;
+#else
+	// For all other clients we use the core profile and operate in a window
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
+	windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+#endif
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, kStencilBits);
+
+	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+
+	// SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+	// SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, kMsaaSampleCount);
+
+	/*
+	 * In a real application you might want to initialize more subsystems
+	 */
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
+		throw_sdl_error();
+
+	// Setup window
+	// This code will create a window with the half the resolution as the user's desktop.
+	SDL_DisplayMode displayMode;
+	if (SDL_GetDesktopDisplayMode(0, &displayMode) != 0)
+		throw_sdl_error();
+
+	window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_CENTERED,
+		SDL_WINDOWPOS_CENTERED, displayMode.w / 2, displayMode.h / 2, windowFlags);
+
+	if (!window)
+		throw_sdl_error();
+
+	// To go fullscreen
+	// SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
+
+	// try and setup a GL context
+	glContext = SDL_GL_CreateContext(window);
+	if (!glContext)
+		throw_sdl_error();
+
+	auto success = SDL_GL_MakeCurrent(window, glContext);
+	if (success != 0)
+		throw_sdl_error();
+
+	SDL_GL_GetDrawableSize(window, &viewWidth, &viewHeight);
 }
 
-void App::handle_events() {
+SdlApp::~SdlApp()
+{
+	if (glContext) {
+		SDL_GL_DeleteContext(glContext);
+	}
+
+	//Destroy window
+	SDL_DestroyWindow(window);
+
+	//Quit SDL subsystems
+	SDL_Quit();
+}
+
+void SkiaApp::run()
+{
+	while (!fQuit)
+	{
+		update();
+	}
+}
+
+void SkiaApp::update()
+{
+	auto* canvas = surface->getCanvas();
+	const char* helpMessage = "Click and drag to create rects.  Press esc to quit.";
+
+	canvas->clear(SK_ColorWHITE);
+	handle_events();
+
+	paint.setColor(SK_ColorBLACK);
+
+	canvas->drawString(helpMessage, 100.0f, 100.0f, font, paint);
+
+	SkRandom rand;
+	for (int i = 0; i < fRects.count(); i++) {
+		paint.setColor(rand.nextU() | 0x44808080);
+		canvas->drawRect(fRects[i], paint);
+	}
+
+	// draw offscreen canvas
+	canvas->save();
+	canvas->translate(float(viewWidth) / 2, float(viewHeight) / 2);
+	canvas->rotate(rotation++);
+	canvas->drawImage(image, -50.0f, -50.0f);
+	canvas->restore();
+
+	canvas->flush();
+	SDL_GL_SwapWindow(window);
+}
+
+void SkiaApp::update_callback(void* app)
+{
+	static_cast<SkiaApp*>(app)->update();
+}
+
+void SkiaApp::handle_events() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
@@ -126,10 +255,8 @@ static SkPath create_star() {
 	return concavePath;
 }
 
-void App::skia_sdl_init()
+SkiaApp::SkiaApp()
 {
-	SDL_GL_GetDrawableSize(window, &viewWidth, &viewHeight);
-
 	glViewport(0, 0, viewWidth, viewHeight);
 	glClearColor(1, 1, 1, 1);
 	glClearStencil(0);
@@ -143,16 +270,21 @@ void App::skia_sdl_init()
 	SkASSERT(grContext);
 
 	// Wrap the frame buffer object attached to the screen in a Skia render target so Skia can
-	// render to it
+	  // render to it
 	GrGLint buffer;
 	GR_GL_GetIntegerv(interface.get(), GR_GL_FRAMEBUFFER_BINDING, &buffer);
 	GrGLFramebufferInfo info;
 	info.fFBOID = (GrGLuint)buffer;
-	SkColorType colorType;
 
 	int contextType;
 	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &contextType);
 
+	SkColorType colorType;
+
+#ifdef SK_BUILD_FOR_WASM
+	info.fFormat = GL_RGBA8;
+	colorType = kRGBA_8888_SkColorType;
+#else
 	//SkDebugf("%s", SDL_GetPixelFormatName(windowFormat));
 	// TODO: the windowFormat is never any of these?
 	uint32_t windowFormat = SDL_GetWindowPixelFormat(window);
@@ -170,6 +302,7 @@ void App::skia_sdl_init()
 			info.fFormat = GR_GL_RGBA8;
 		}
 	}
+#endif
 
 	GrBackendRenderTarget target(viewWidth, viewHeight, kMsaaSampleCount, kStencilBits, info);
 
@@ -202,35 +335,8 @@ void App::skia_sdl_init()
 	font.setSize(24);
 }
 
-void App::skia_sdl_loop()
+SkiaApp::~SkiaApp()
 {
-	auto* canvas = surface->getCanvas();
-	const char* helpMessage = "Click and drag to create rects.  Press esc to quit.";
-
-	while (!fQuit) { // Our application loop
-		canvas->clear(SK_ColorWHITE);
-		handle_events();
-
-		paint.setColor(SK_ColorBLACK);
-
-		canvas->drawString(helpMessage, 100.0f, 100.0f, font, paint);
-
-		SkRandom rand;
-		for (int i = 0; i < fRects.count(); i++) {
-			paint.setColor(rand.nextU() | 0x44808080);
-			canvas->drawRect(fRects[i], paint);
-		}
-
-		// draw offscreen canvas
-		canvas->save();
-		canvas->translate(float(viewWidth) / 2, float(viewHeight) / 2);
-		canvas->rotate(rotation++);
-		canvas->drawImage(image, -50.0f, -50.0f);
-		canvas->restore();
-
-		canvas->flush();
-		SDL_GL_SwapWindow(window);
-	}
 }
 
 #if defined(SK_BUILD_FOR_ANDROID)
@@ -239,87 +345,15 @@ int SDL_main(int argc, char** argv) {
 extern "C" int __cdecl main(int argc, char** argv) {
 #endif
 
-	uint32_t windowFlags = 0;
+	auto* app = new SkiaApp();
 
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-
-#if defined(SK_BUILD_FOR_ANDROID) || defined(SK_BUILD_FOR_IOS)
-	// For Android/iOS we need to set up for OpenGL ES and we make the window hi res & full screen
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-	windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
-		SDL_WINDOW_BORDERLESS | SDL_WINDOW_FULLSCREEN_DESKTOP |
-		SDL_WINDOW_ALLOW_HIGHDPI;
+#ifdef SK_BUILD_FOR_WASM
+	emscripten_set_main_loop_arg(SkiaApp::update_callback, app, 0, true);
 #else
-	// For all other clients we use the core profile and operate in a window
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
-	windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
-#endif
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, kStencilBits);
-
-	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
-
-	// SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-	// SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, kMsaaSampleCount);
-
-	/*
-	 * In a real application you might want to initialize more subsystems
-	 */
-	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
-		handle_error();
-		return 1;
-	}
-
-	// Setup window
-	// This code will create a window with the half the resolution as the user's desktop.
-	SDL_DisplayMode displayMode;
-	if (SDL_GetDesktopDisplayMode(0, &displayMode) != 0) {
-		handle_error();
-		return 1;
-	}
-
-	auto* window = SDL_CreateWindow("SDL Window", SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED, displayMode.w / 2, displayMode.h / 2, windowFlags);
-
-	if (!window) {
-		handle_error();
-		return 1;
-	}
-
-	// To go fullscreen
-	// SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
-
-	// try and setup a GL context
-	auto* glContext = SDL_GL_CreateContext(window);
-	if (!glContext) {
-		handle_error();
-		return 1;
-	}
-
-	int success = SDL_GL_MakeCurrent(window, glContext);
-	if (success != 0) {
-		handle_error();
-		return success;
-	}
-
-	App* app = new App(window);
 	app->run();
+#endif
+
 	delete app;
 
-	if (glContext) {
-		SDL_GL_DeleteContext(glContext);
-	}
-
-	//Destroy window
-	SDL_DestroyWindow(window);
-
-	//Quit SDL subsystems
-	SDL_Quit();
 	return 0;
 }

@@ -27,7 +27,11 @@
 #include "include/gpu/gl/GrGLInterface.h"
 #include "src/gpu/gl/GrGLUtil.h"
 
-#if defined(SK_BUILD_FOR_ANDROID)
+#if defined(SK_BUILD_FOR_WASM)
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#include <GL/gl.h>
+#elif defined(SK_BUILD_FOR_ANDROID)
 #include <GLES/gl.h>
 #elif defined(SK_BUILD_FOR_UNIX)
 #include <GL/gl.h>
@@ -36,6 +40,8 @@
 #elif defined(SK_BUILD_FOR_IOS)
 #include <OpenGLES/ES2/gl.h>
 #endif
+
+#include <stdexcept>
 
 #undef main
 
