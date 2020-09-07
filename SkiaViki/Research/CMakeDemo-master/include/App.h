@@ -7,6 +7,12 @@
 
 #include "pch.h"
 
+extern "C"
+{
+    bool gCheckErrorGL = false;
+    bool gLogCallsGL = false;
+}
+
 class App {
 public:
     explicit App();

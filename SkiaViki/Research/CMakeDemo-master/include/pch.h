@@ -14,6 +14,28 @@
 #ifndef PCH_H
 #define PCH_H
 
+#define SK_GL
+
+#include "SDL.h"
+#include "SDL_opengles2.h"
+
+#include <iostream>
+#include <functional>
+#include <exception>
+
+#include <emscripten.h>
+
+#include "include/gpu/GrBackendSurface.h"
+#include "include/gpu/GrDirectContext.h"
+#include "include/core/SkCanvas.h"
+#include "include/core/SkFont.h"
+#include "include/core/SkSurface.h"
+#include "include/utils/SkRandom.h"
+#include "include/gpu/gl/GrGLInterface.h"
+#include "src/gpu/gl/GrGLUtil.h"
+
+#include <Utilities.h>
+
 #define GL_GLEXT_PROTOTYPES 1
 #if defined(SK_BUILD_FOR_ANDROID)
 #include <GLES/gl.h>
@@ -26,28 +48,6 @@
 #endif
 
 #undef main
-
-
-// add headers that you want to pre-compile here
-
-#include <iostream>
-#include <functional>
-#include <exception>
-
-#include <emscripten.h>
-#include "SDL.h"
-#include "SDL_opengles2.h"
-
-#include "include/gpu/GrBackendSurface.h"
-#include "include/gpu/GrDirectContext.h"
-#include "include/core/SkCanvas.h"
-#include "include/core/SkFont.h"
-#include "include/core/SkSurface.h"
-#include "include/utils/SkRandom.h"
-#include "include/gpu/gl/GrGLInterface.h"
-#include "src/gpu/gl/GrGLUtil.h"
-
-#include <Utilities.h>
 
 #endif //PCH_H
 

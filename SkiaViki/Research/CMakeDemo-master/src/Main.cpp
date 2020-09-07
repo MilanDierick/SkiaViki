@@ -1,5 +1,5 @@
-#include <App.h>
 #include "pch.h"
+#include <App.h>
 
 // Shader sources
 const GLchar* vertexSource =
