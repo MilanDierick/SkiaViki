@@ -7,11 +7,11 @@
 
 #include "pch.h"
 
-extern "C"
-{
-    bool gCheckErrorGL = false;
-    bool gLogCallsGL = false;
-}
+//extern "C"
+//{
+//    bool gCheckErrorGL = false;
+//    bool gLogCallsGL = false;
+//}
 
 class App {
 public:
@@ -20,7 +20,7 @@ public:
     void Run();
     void MainLoop();
 
-    std::function<void()> Loop;
+//    std::function<void()> Loop;
 
 private:
     void HandleEvents();
@@ -29,13 +29,15 @@ private:
 
     SkTArray<SkRect> fRects = {};
     SDL_Window* window = nullptr;
-    sk_sp<GrDirectContext> grContext;
+    sk_sp<GrContext> grContext;
     sk_sp<SkSurface> surface;
     sk_sp<SkSurface> cpuSurface;
     sk_sp<SkImage> image;
     SkPaint paint;
     SkFont font;
     float rotation = 0;
+    int width = 0;
+    int height = 0;
     int viewWidth = 0;
     int viewHeight = 0;
     bool fQuit = false;

@@ -4,6 +4,23 @@
 
 #include "App.h"
 
+// Set the pixel format based on the colortype.
+// These degrees of freedom are removed from canvaskit only to keep the interface simpler.
+struct ColorSettings {
+    explicit ColorSettings(uint32_t colorSpace) {
+        if (colorSpace == SDL_PIXELFORMAT_UNKNOWN || colorSpace == SDL_PIXELFORMAT_RGBA8888) {
+            colorType = kRGBA_8888_SkColorType;
+            pixFormat = GL_RGBA8;
+        } else {
+            colorType = kRGBA_F16_SkColorType;
+            pixFormat = GL_RGBA16F;
+        }
+    };
+
+    SkColorType colorType;
+    GrGLenum pixFormat;
+};
+
 App::App()
 {
     SkiaSDLInit();
@@ -56,10 +73,11 @@ void App::HandleEvents()
     }
 }
 
+// TODO: If it's impossible to create a working OpenGL backend using SDL, demand a WebGL backend from javascript
+//  using 'emscripten_webgl_make_context_current(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE)'
 void App::SkiaSDLInit()
 {
     int contextType;
-    SkColorType colorType;
 
     SDL_CreateWindowAndRenderer(640, 480, 0, &window, nullptr);
 
@@ -69,75 +87,38 @@ void App::SkiaSDLInit()
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &contextType);
 
-//    SDL_GL_GetDrawableSize(window, &viewWidth, &viewHeight);
-//
-//    glViewport(0, 0, viewWidth, viewHeight);
-//    glClearColor(1, 1, 1, 1);
-//    glClearStencil(0);
-//    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
     // setup GrContext
-    sk_sp<const GrGLInterface> interface = GrGLMakeNativeInterface();
-
+    auto interface = GrGLMakeNativeInterface();
     // setup contexts
-    grContext = GrDirectContext::MakeGL(interface);
-    SkASSERT(grContext);
+    grContext = sk_sp<GrContext>(GrContext::MakeGL(interface));
 
-    // Wrap the frame buffer object attached to the screen in a Skia render target so Skia can
-    // render to it
-    GrGLint buffer;
-    GR_GL_GetIntegerv(interface.get(), GR_GL_FRAMEBUFFER_BINDING, &buffer);
+    // WebGL should already be clearing the color and stencil buffers, but do it again here to
+    // ensure Skia receives them in the expected state.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(0, 0, 0, 0);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    grContext->resetContext(kRenderTarget_GrGLBackendState | kMisc_GrGLBackendState);
+
+    // The on-screen canvas is FBO 0. Wrap it in a Skia render target so Skia can render to it.
     GrGLFramebufferInfo info;
-    info.fFBOID = (GrGLuint)buffer;
+    info.fFBOID = 0;
+
+    GrGLint sampleCnt;
+    glGetIntegerv(GL_SAMPLES, &sampleCnt);
+
+    GrGLint stencil;
+    glGetIntegerv(GL_STENCIL_BITS, &stencil);
 
     //SkDebugf("%s", SDL_GetPixelFormatName(windowFormat));
     // TODO: the windowFormat is never any of these?
     uint32_t windowFormat = SDL_GetWindowPixelFormat(window);
-    if (SDL_PIXELFORMAT_RGBA8888 == windowFormat) {
-        info.fFormat = GR_GL_RGBA8;
-        colorType = kRGBA_8888_SkColorType;
-    }
-    else {
-        colorType = kBGRA_8888_SkColorType;
-        if (SDL_GL_CONTEXT_PROFILE_ES == contextType) {
-            info.fFormat = GR_GL_BGRA8;
-        }
-        else {
-            // We assume the internal format is RGBA8 on desktop GL
-            info.fFormat = GR_GL_RGBA8;
-        }
-    }
 
-    GrBackendRenderTarget target(viewWidth, viewHeight, msaaSampleCount, stencilBits, info);
-
-    // setup SkSurface
-    // To use distance field text, use commented out SkSurfaceProps instead
-    // SkSurfaceProps props(SkSurfaceProps::kUseDeviceIndependentFonts_Flag,
-    // 	SkSurfaceProps::kLegacyFontHost_InitType);
-    SkSurfaceProps props(SkSurfaceProps::kLegacyFontHost_InitType);
-
-    surface = SkSurface::MakeFromBackendRenderTarget(grContext.get(), target,
-                                                     kBottomLeft_GrSurfaceOrigin,
-                                                     colorType, nullptr, &props);
-
-    SkCanvas* canvas = surface->getCanvas();
-    // canvas->scale((float)dw / displayMode.w, (float)dh / displayMode.h);
-
-    paint.setAntiAlias(true);
-
-    // TODO: Use a GPU surface
-    // create a surface for CPU rasterization
-    cpuSurface = SkSurface::MakeRaster(canvas->imageInfo());
-
-    SkCanvas* offscreen = cpuSurface->getCanvas();
-    offscreen->save();
-    offscreen->translate(50.0f, 50.0f);
-    offscreen->drawPath(Utilities::CreateStar(), paint);
-    offscreen->restore();
-
-    image = cpuSurface->makeImageSnapshot();
-
-    font.setSize(24);
+    const auto colorSettings = ColorSettings(windowFormat);
+    info.fFormat = colorSettings.pixFormat;
+    GrBackendRenderTarget target(width, height, sampleCnt, stencil, info);
+    surface = sk_sp<SkSurface>(SkSurface::MakeFromBackendRenderTarget(grContext.get(), target,
+                                                                    kBottomLeft_GrSurfaceOrigin, colorSettings.colorType, nullptr, nullptr));
 }
 
 void App::SkiaSDLLoop()
@@ -151,7 +132,7 @@ void App::SkiaSDLLoop()
 
         paint.setColor(SK_ColorBLACK);
 
-        canvas->drawString(helpMessage, 100.0f, 100.0f, font, paint);
+        //canvas->drawString(helpMessage, 100.0f, 100.0f, font, paint);
 
         SkRandom rand;
         for (int i = 0; i < fRects.count(); i++) {
@@ -169,4 +150,6 @@ void App::SkiaSDLLoop()
         canvas->flush();
         SDL_GL_SwapWindow(window);
     }
+
+    SDL_GL_SwapWindow(window);
 }
